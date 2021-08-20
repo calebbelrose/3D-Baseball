@@ -6,7 +6,9 @@ using UnityEngine.AI;
 public class BallMovement : MonoBehaviour
 {
     public Rigidbody rb;
-    public NavMeshAgent[] fielders; int shortestIndex = 0;
+    public NavMeshAgent[] fielders;
+
+    int bestFielder = 0;
     Vector3 prevPosition = Vector3.zero;
     bool noCollision = true;
     bool notCaught = true;
@@ -20,59 +22,89 @@ public class BallMovement : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        
         //Debug.Log((fielders[shortestIndex].transform.position - prevPosition) / Time.deltaTime);
         //prevPosition = fielders[shortestIndex].transform.position;
+
+        if (notCaught && Vector3.Distance(fielders[bestFielder].transform.position, transform.position) <= 60f)
+        {
+            transform.SetParent(fielders[bestFielder].transform, true);
+            rb.useGravity = false;
+            rb.Sleep();
+            Debug.Log("Caught " + Time.time);
+            notCaught = false;
+        }
+        if (fielders[bestFielder].transform.position != prevPosition)
+        {
+            prevPosition = fielders[bestFielder].transform.position;
+        }
     }
 
 
     void Hit()
     {
-        Debug.Log("1");
         Vector3 originalLocation = transform.position;
         Quaternion originalRotation = transform.rotation;
-        Vector3 hitDirection = new Vector3(Random.Range(-1f, 1f), Random.Range(0f, 1f), Random.Range(-1f, 1f));
+        Vector3 hitDirection = new Vector3(Random.Range(0f, 1f), Random.Range(-1f, 1f), Random.Range(0f, 1f));
         float time = 0f;
+        Vector3 bestFielderPosition = Vector3.zero;
 
+        rb.AddForce(hitDirection * 10000f);
         Physics.autoSimulation = false;
-        rb.AddForce(hitDirection * 1000f);
 
-        while (noCollision)
-            Physics.Simulate(0.01f);
-
+        float shortestDistance = float.MaxValue;
+        float runTime = 0f;
         
-        float shortestDistance = Vector3.Distance(fielders[0].transform.position, transform.position);
-
-        for (int i = 1; i < fielders.Length; i++)
+        while (notCaught && time < 500f)
         {
-            float distance = Vector3.Distance(fielders[i].transform.position, transform.position);
+            time += 0.02f;
+            Physics.Simulate(0.02f);
 
-            if (distance < shortestDistance)
+            if (time == 0.02f)
+                runTime += time * time;
+            else
+                runTime += 0.02f;
+
+            if (transform.position.y < 100f)
             {
-                shortestDistance = distance;
-                shortestIndex = i;
+                shortestDistance = Vector3.Distance(fielders[0].transform.position, transform.position);
+
+                for (int i = 0; i < fielders.Length; i++)
+                {
+                    Vector3 fielderPosition = Vector3.MoveTowards(fielders[i].transform.position, new Vector3(transform.position.x, 0.0f, transform.position.z), runTime * 100.0f);
+                    float distance = Vector3.Distance(fielderPosition, transform.position);
+
+                    if (distance < shortestDistance)
+                    {
+                        shortestDistance = distance;
+                        bestFielder = i;
+                        bestFielderPosition = fielderPosition;
+                    }
+                    else if (distance == shortestDistance && Vector3.Distance(fielders[i].transform.position, transform.position) < Vector3.Distance(fielders[bestFielder].transform.position, transform.position))
+                    {
+                        bestFielder = i;
+                        bestFielderPosition = fielderPosition;
+                    }
+                }
+
+                if (shortestDistance <= 50f)
+                    notCaught = false;
             }
         }
+        Debug.Log(time + " " + transform.position.y + " " + shortestDistance);
 
-        ResetHit(hitDirection, originalLocation, originalRotation);
-
-        while (notCaught)
-        {
-            time += 0.01f;
-            Physics.Simulate(0.01f);
-            Vector3 newPosition = Vector3.MoveTowards(fielders[shortestIndex].transform.position, transform.position, time);
-            if (Vector3.Distance(newPosition, transform.position) <= 0.5f)
-                notCaught = false;
-        }
-
-        fielders[shortestIndex].SetDestination(transform.position);
-        ResetHit(hitDirection, originalLocation, originalRotation);
+        notCaught = true;
         Physics.autoSimulation = true;
+        ResetHit(hitDirection, originalLocation, originalRotation);
+        fielders[bestFielder].SetDestination(bestFielderPosition);
+        prevPosition = fielders[bestFielder].transform.position;
+        Debug.Log(Time.time);
     }
 
     void ResetHit(Vector3 hitDirection, Vector3 originalLocation, Quaternion originalRotation)
     {
         rb.Sleep();
-        rb.AddForce(hitDirection * 1000f);
+        rb.AddForce(hitDirection * 10000f);
         transform.position = originalLocation;
         transform.rotation = originalRotation;
     }
@@ -81,10 +113,8 @@ public class BallMovement : MonoBehaviour
     {
         if (collision.gameObject.tag == "Field")
             noCollision = false;
-        else if (collision.gameObject.tag == "Fielder")
-        {
-            transform.SetParent(collision.gameObject.transform);
-            rb.useGravity = false;
-        }
+        else if (collision.gameObject.tag == "Bounds")
+            Debug.Log("Bounds");
+            
     }
 }
